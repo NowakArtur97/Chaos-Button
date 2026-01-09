@@ -1,16 +1,16 @@
 import os, boto3, json
 
-region = os.environ['AWS_REGION']
-instance = 'i-0cedabd143bbe3e2c'
-ec2 = boto3.client('ec2', region_name=region)
+REGION = os.environ['AWS_REGION']
+EC2_INSTANCE_ID = os.environ["EC2_INSTANCE_ID"]
+ec2 = boto3.client('ec2', region_name=REGION)
 
 def start_ec2_instance():
-    ec2.start_instances(InstanceIds=[instance])
-    print('Successfully started EC2 instance: ' + instance)
+    ec2.start_instances(InstanceIds=[EC2_INSTANCE_ID])
+    print('Successfully started EC2 instance: ' + EC2_INSTANCE_ID)
 
 def stop_ec2_instance():
-    ec2.stop_instances(InstanceIds=[instance])
-    print('Successfully stopped EC2 instance: ' + instance)
+    ec2.stop_instances(InstanceIds=[EC2_INSTANCE_ID])
+    print('Successfully stopped EC2 instance: ' + EC2_INSTANCE_ID)
 
 def lambda_handler(event, context):
     print("Received event: " + json.dumps(event))

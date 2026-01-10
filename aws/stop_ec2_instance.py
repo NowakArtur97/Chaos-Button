@@ -1,4 +1,4 @@
-import os, boto3, json
+import os, boto3
 
 REGION = os.environ['AWS_REGION']
 EC2_INSTANCE_ID = os.environ["EC2_INSTANCE_ID"]

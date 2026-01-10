@@ -45,11 +45,14 @@ def lambda_handler(event, context):
         inbound_rule_to_revoke = get_rule_to_invoke(security_group_info, port, protocol, cidr)
         if not inbound_rule_to_revoke:
             logger.info("No matching inbound rule found")
-            return "Fail"
+            return { "status": "Fail" }
         revoke_inbound_rule_from_security_group(inbound_rule_to_revoke)
         logger.info("Inbound rule revoked")
-        return "Success"
+        return { 
+            "status": "Success",
+            "previousRule": inbound_rule_to_revoke 
+        }
     except Exception as e:
         logger.info("Exception when revoking rule from security group")
         logger.info(e)
-        return "Fail"
+        return { "status": "Fail" }

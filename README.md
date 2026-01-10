@@ -16,6 +16,7 @@ A project using chaos engineering in a serverless version. Allows you to "break"
 Chaos-Button:
 
 - Starting and stopping EC2 instance by ID
+- Revoking and restoring inbound rule in security group by ID
 
 CloudFormation:
 

@@ -30,6 +30,22 @@ Resources:
           FromPort: !Ref SshPort
           ToPort: !Ref SshPort
           IpProtocol: tcp
+  DatabaseAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: store-in-database
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+      Roles:
+        - !Ref RevokeSecurityGroupInboundRuleLambdaRole
+        - !Ref RestoreSecurityGroupInboundRuleLambdaRole
   RevokeSecurityGroupInboundRuleLambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -60,16 +76,6 @@ Resources:
                 Action:
                   - ec2:RevokeSecurityGroupIngress
                 Resource: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}"
-        - PolicyName: LogPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
   RevokeSecurityGroupInboundRuleLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -163,16 +169,6 @@ Resources:
                 Action:
                   - ec2:AuthorizeSecurityGroupIngress
                 Resource: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}"
-        - PolicyName: LogPolicy
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
   RestoreSecurityGroupInboundRuleLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:

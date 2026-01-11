@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Chaos Button Template
+Parameters:
+  SshPort:
+    Type: Number
+    Description: SSH port
+    Default: 22
+    MinValue: 22
+    MaxValue: 65535
+  SourceCidr:
+    Type: String
+    Description: CIDR Block of IPv4 IP addresses allowed to access EC2 instance via SSH
+    AllowedPattern: "^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(/([0-9]|[1-2][0-9]|3[0-2]))?$"
+    ConstraintDescription: The value must be valid IPv4 CIDR block
+    Default: 0.0.0.0/32
+  # Remove when VPC created in Cloudformation template
+  VPCId:
+    Type: String
+    Description: VPC ID for security group
+    Default: vpc-06264639a7f64e410
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: chaos-button-security-group
+      GroupDescription: Security group that will have revoked and restored inbound rule
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - CidrIp: !Ref SourceCidr
+          FromPort: !Ref SshPort
+          ToPort: !Ref SshPort
+          IpProtocol: tcp
+  RevokeSecurityGroupInboundRuleLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: SecurityGroupDescribePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeSecurityGroups
+                Resource: "*"
+        - PolicyName: SecurityGroupModifyPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:RevokeSecurityGroupIngress
+                Resource: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}"
+        - PolicyName: LogPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+  RevokeSecurityGroupInboundRuleLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: revoke-security-group-inbound-rule
+      Runtime: python3.9
+      Timeout: 60
+      Handler: index.lambda_handler
+      Role: !GetAtt RevokeSecurityGroupInboundRuleLambdaRole.Arn
+      Environment:
+        Variables:
+          SECURITY_GROUP_ID: !GetAtt SecurityGroup.GroupId
+      Code:
+        ZipFile: |
+          import os, boto3, logging, json
+
+          SECURITY_GROUP_ID = os.environ["SECURITY_GROUP_ID"]
+
+          ec2 = boto3.client("ec2")
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def get_security_group_info():
+              response = ec2.describe_security_groups(GroupIds=[SECURITY_GROUP_ID])
+              return response["SecurityGroups"][0]
+
+          def get_rule_to_invoke(security_group_info, port, protocol, cidr):
+              for rule in security_group_info.get("IpPermissions", []):
+                  if(
+                      rule.get("FromPort") == port 
+                      and rule.get("ToPort") == port 
+                      and rule.get("IpProtocol") == protocol 
+                  ):
+                      for ip_range in rule.get("IpRanges", []):
+                          if ip_range.get("CidrIp") == cidr:
+                              return {
+                                  "IpProtocol": protocol,
+                                  "FromPort": port,
+                                  "ToPort": port,
+                                  "IpRanges": [{"CidrIp": cidr}]
+                              }
+
+          def revoke_inbound_rule_from_security_group(inbound_rule_to_revoke):
+              ec2.revoke_security_group_ingress(
+                  GroupId=SECURITY_GROUP_ID,
+                  IpPermissions=[inbound_rule_to_revoke]
+              )
+
+          def lambda_handler(event, context):
+              logger.info(f"Received event: {json.dumps(event)}")
+              input = event["Input"]
+              user_ip = input["userIp"]
+              cidr = f"{user_ip}/32"
+              port = 22
+              protocol = "tcp"
+              logger.info(f"Revoking inbound rule for {cidr} from security group with id: {SECURITY_GROUP_ID}")
+              try:
+                  security_group_info = get_security_group_info()
+                  inbound_rule_to_revoke = get_rule_to_invoke(security_group_info, port, protocol, cidr)
+                  if not inbound_rule_to_revoke:
+                      logger.info("No matching inbound rule found")
+                      return { "status": "Fail" }
+                  revoke_inbound_rule_from_security_group(inbound_rule_to_revoke)
+                  logger.info("Inbound rule revoked")
+                  return { 
+                      "status": "Success",
+                      "previousRule": inbound_rule_to_revoke 
+                  }
+              except Exception as e:
+                  logger.info("Exception when revoking rule from security group")
+                  logger.info(e)
+                  return { "status": "Fail" }

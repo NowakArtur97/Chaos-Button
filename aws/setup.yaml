@@ -141,3 +141,72 @@ Resources:
                   logger.info("Exception when revoking rule from security group")
                   logger.info(e)
                   return { "status": "Fail" }
+  RestoreSecurityGroupInboundRuleLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: SecurityGroupModifyPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                Resource: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${SecurityGroup}"
+        - PolicyName: LogPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+  RestoreSecurityGroupInboundRuleLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: restore-security-group-inbound-rule
+      Runtime: python3.9
+      Timeout: 60
+      Handler: index.lambda_handler
+      Role: !GetAtt RestoreSecurityGroupInboundRuleLambdaRole.Arn
+      Environment:
+        Variables:
+          SECURITY_GROUP_ID: !GetAtt SecurityGroup.GroupId
+      Code:
+        ZipFile: |
+          import os, boto3, logging, json
+
+          SECURITY_GROUP_ID = os.environ["SECURITY_GROUP_ID"]
+
+          ec2 = boto3.client("ec2")
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def restore_inbound_rule_in_security_group(previous_rule):
+              ec2.authorize_security_group_ingress(
+                  GroupId=SECURITY_GROUP_ID,
+                  IpPermissions=[previous_rule]
+              )
+
+          def lambda_handler(event, context):
+              logger.info(f"Received event: {json.dumps(event)}")
+              previous_rule = event["previousRule"]
+              try:
+                  restore_inbound_rule_in_security_group(previous_rule)
+                  return "Success"
+              except Exception as e:
+                  logger.info("Exception when restoring rule in security group")
+                  logger.info(e)
+                  return "Fail"

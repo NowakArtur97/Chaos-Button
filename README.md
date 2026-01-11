@@ -24,7 +24,12 @@ CloudFormation:
 
 ## Built With
 
-CloudFormation resources (TBA):
+CloudFormation resources:
+
+- IAM Policy
+- IAM Roles
+- Security Group
+- Lambda Functions
 
 ## Status
 
